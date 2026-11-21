@@ -1,0 +1,9 @@
+name = "petshop-chat"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ALLOWED_ORIGIN = "https://iceberg2611.github.io"
+
+# API-Schlüssel NICHT hier eintragen, sondern:  npx wrangler secret put ANTHROPIC_API_KEY

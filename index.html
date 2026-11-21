@@ -31,6 +31,20 @@ section{padding:40px 0}
 .contact .card b{display:block;margin-bottom:4px}
 footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:.9rem;text-align:center}
 @media (max-width:720px){.hero,.contact{grid-template-columns:1fr}nav{display:none}}
+.chat-btn{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--accent);color:#fff;border:0;border-radius:999px;padding:14px 20px;font:600 1rem system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:20}
+.chat-btn:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+.chat{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(80px + env(safe-area-inset-bottom,0px));width:min(360px,calc(100vw - 32px));height:min(480px,calc(100vh - 120px));background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;z-index:20}
+.chat[hidden]{display:none}
+.chat-head{background:var(--accent2);color:#fff;padding:12px 16px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.chat-head button{background:none;border:0;color:#fff;font-size:1.3rem;cursor:pointer}
+.chat-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:85%;padding:9px 12px;border-radius:14px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.bot{background:var(--bg);border:1px solid var(--line);align-self:flex-start}
+.msg.user{background:var(--accent);color:#fff;align-self:flex-end}
+.chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+.chat-form input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit}
+.chat-form button{background:var(--accent);color:#fff;border:0;border-radius:999px;padding:0 16px;font-weight:600;cursor:pointer}
+.chat-form button:disabled{opacity:.5}
 </style>
 </head>
 <body>
@@ -80,6 +94,16 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-s
 </div>
 <footer><span id="foot"></span> · Eskişehir</footer>
 
+<button class="chat-btn" id="chatBtn" aria-controls="chat" aria-expanded="false">💬 Sorunuz mu var?</button>
+<div class="chat" id="chat" hidden role="dialog" aria-label="Sohbet asistanı">
+  <div class="chat-head"><span id="chatTitle">Asistan</span><button id="chatClose" aria-label="Kapat">×</button></div>
+  <div class="chat-log" id="chatLog" aria-live="polite"></div>
+  <form class="chat-form" id="chatForm">
+    <input id="chatInput" autocomplete="off" maxlength="800" placeholder="Mesajınızı yazın…" aria-label="Mesaj">
+    <button type="submit" id="chatSend">Gönder</button>
+  </form>
+</div>
+
 <script>
 // Demo-Daten pro Shop; Auswahl über ?shop=<key>. Angaben aus öffentlichen Verzeichnissen, vor Versand prüfen.
 const SHOPS = {
@@ -104,6 +128,50 @@ document.getElementById("foot").textContent = "© 2026 " + s.name;
 const telHref = s.tel ? "tel:" + s.tel.replace(/\s/g,"") : "#iletisim";
 document.getElementById("callBtn").href = telHref;
 document.getElementById("waBtn").href = "#iletisim";
+
+// KI-Chat. Nach dem Deploy des Workers hier die Worker-URL eintragen, z. B. "https://petshop-chat.DEINNAME.workers.dev"
+const CHAT_ENDPOINT = "";
+const chat = document.getElementById("chat"), chatBtn = document.getElementById("chatBtn");
+const log = document.getElementById("chatLog"), form = document.getElementById("chatForm");
+const input = document.getElementById("chatInput"), send = document.getElementById("chatSend");
+const chatHistory = [];
+document.getElementById("chatTitle").textContent = s.name + " Asistanı";
+function add(role, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + (role === "user" ? "user" : "bot");
+  d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return d;
+}
+function toggle(open) {
+  chat.hidden = !open; chatBtn.setAttribute("aria-expanded", String(open));
+  if (open) { if (!log.children.length) add("bot", "Merhaba! 🐾 " + s.name + " asistanıyım. Mama, aksesuar veya mağazamız hakkında sorabilirsiniz."); input.focus(); }
+}
+chatBtn.addEventListener("click", () => toggle(chat.hidden));
+document.getElementById("chatClose").addEventListener("click", () => toggle(false));
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ""; add("user", text); chatHistory.push({ role: "user", content: text });
+  if (!CHAT_ENDPOINT) {
+    add("bot", "(Demo) Sohbet asistanı henüz bağlanmadı. Yayına alındığında burada yapay zekâ ile anında cevap verilecek.");
+    chatHistory.pop(); return;
+  }
+  send.disabled = true;
+  const pending = add("bot", "…");
+  try {
+    const r = await fetch(CHAT_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop: key, messages: chatHistory }) });
+    const data = await r.json();
+    const reply = data.reply || data.error || "Şu an cevap veremiyorum.";
+    pending.textContent = reply;
+    if (data.reply) chatHistory.push({ role: "assistant", content: data.reply }); else chatHistory.pop();
+  } catch {
+    pending.textContent = "Bağlantı hatası, lütfen tekrar deneyin."; chatHistory.pop();
+  } finally {
+    send.disabled = false; input.focus();
+  }
+});
 </script>
 </body>
 </html>
